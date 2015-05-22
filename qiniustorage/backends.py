@@ -40,6 +40,7 @@ QINIU_ACCESS_KEY = get_qiniu_config('QINIU_ACCESS_KEY')
 QINIU_SECRET_KEY = get_qiniu_config('QINIU_SECRET_KEY')
 QINIU_BUCKET_NAME = get_qiniu_config('QINIU_BUCKET_NAME')
 QINIU_BUCKET_DOMAIN = get_qiniu_config('QINIU_BUCKET_DOMAIN')
+QINIU_FILENAME_PREFIX = get_qiniu_config('QINIU_FILENAME_PREFIX')
 
 
 class QiniuStorage(Storage):
@@ -52,10 +53,12 @@ class QiniuStorage(Storage):
             access_key=QINIU_ACCESS_KEY,
             secret_key=QINIU_SECRET_KEY,
             bucket_name=QINIU_BUCKET_NAME,
+            filename_prefix=QINIU_FILENAME_PREFIX,
             bucket_domain=QINIU_BUCKET_DOMAIN):
 
         self.auth = Auth(access_key, secret_key)
         self.bucket_name = bucket_name
+        self.filename_prefix = filename_prefix
         self.bucket_domain = bucket_domain
         self.bucket_manager = BucketManager(self.auth)
 
@@ -67,6 +70,9 @@ class QiniuStorage(Storage):
 
     def _open(self, name, mode='rb'):
         return QiniuFile(name, self, mode)
+
+    def _prefix_name(self, name):
+        return (self.filename_prefix + name)
 
     def _save(self, name, content):
         name = self._normalize_name(self._clean_name(name))
@@ -81,7 +87,7 @@ class QiniuStorage(Storage):
         else:
             content_str = content.read()
 
-        self._put_file(name, content_str)
+        self._put_file(self._prefix_name(name), content_str)
         content.close()
         return name
 
@@ -96,14 +102,16 @@ class QiniuStorage(Storage):
 
     def delete(self, name):
         name = self._normalize_name(self._clean_name(name))
-        ret, info = self.bucket_manager.delete(self.bucket_name, name)
+        ret, info = self.bucket_manager.delete(self.bucket_name,
+                self._prefix_name(name))
 
         if ret is None or info.status_code ==612:
             raise QiniuError(info)
 
     def _file_stat(self, name, silent=False):
         name = self._normalize_name(self._clean_name(name))
-        ret, info = self.bucket_manager.stat(self.bucket_name, name)
+        ret, info = self.bucket_manager.stat(self.bucket_name,
+                self._prefix_name(name))
         if ret is None and not silent:
             raise QiniuError(info)
         return ret
@@ -143,7 +151,7 @@ class QiniuStorage(Storage):
 
     def url(self, name):
         name = self._normalize_name(self._clean_name(name))
-        return urljoin(self.bucket_domain, name)
+        return urljoin(self.bucket_domain, self._prefix_name(name))
 
 class QiniuMediaStorage(QiniuStorage):
     location = 'media'
